@@ -2,6 +2,11 @@ import jwt from "jsonwebtoken";
 import { Response } from "express";
 import { DecodedToken, TokenType } from "../types/global.js";
 
+// access token short-lived 15m, refresh token long 7d
+const ACCESS_TOKEN_EXPIRY = "15m";
+const REFRESH_TOKEN_EXPIRY = "7d";
+export const REFRESH_COOKIE_NAME = "jwt";
+
 /**
  * generate a JWT token
  * @param userId to include in the payload
@@ -10,20 +15,26 @@ import { DecodedToken, TokenType } from "../types/global.js";
  * @returns JWT token
  */
 const generateToken = (userId: string, tokenType: TokenType, res: Response): string => {
-  const DAYS = 7;
-
   const payload: DecodedToken = { userId, tokenType };
 
-  const token = jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: `${DAYS}d`,
+  const secret =
+    tokenType === "access" ? process.env.ACCESS_TOKEN_SECRET : process.env.REFRESH_TOKEN_SECRET;
+  if (!secret) {
+    throw new Error("Missing JWT secret environment variable");
+  }
+
+  const token = jwt.sign(payload, secret, {
+    expiresIn: tokenType === "access" ? ACCESS_TOKEN_EXPIRY : REFRESH_TOKEN_EXPIRY,
   });
 
-  res.cookie("jwt", token, {
-    maxAge: DAYS * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-    sameSite: "strict",
-    secure: process.env.NODE_ENV !== "development",
-  });
+  if (tokenType === "refresh") {
+    res.cookie(REFRESH_COOKIE_NAME, token, {
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days represented as milliseconds
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV !== "development",
+    });
+  }
 
   return token;
 };

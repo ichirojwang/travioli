@@ -3,15 +3,25 @@ import jwt from "jsonwebtoken";
 import prisma from "../db/prisma.js";
 import internalServerError from "../utils/internalServerError.js";
 import { DecodedToken } from "../types/global.js";
+import { REFRESH_COOKIE_NAME } from "../utils/generateToken.js";
 
-const protectRoute = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+const authenticateToken = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const token = req.cookies.jwt;
+    const token = req.cookies[REFRESH_COOKIE_NAME];
 
     // check if token was given
     if (!token) {
       res.status(401).json({ message: "Unauthorized - No token provided" });
       return;
+    }
+
+    const secret = process.env.ACCESS_TOKEN_SECRET;
+    if (!secret) {
+      throw new Error("Missing JWT secret environment variable");
     }
 
     // check if token is valid
@@ -31,14 +41,14 @@ const protectRoute = async (req: Request, res: Response, next: NextFunction): Pr
       return;
     }
 
-    // add user to Request
+    // add user and tokenType to Request
     req.user = user;
     req.tokenType = decoded.tokenType;
 
     next();
   } catch (error: unknown) {
-    internalServerError("protectRoute middleware", error, res);
+    internalServerError("authenticateToken middleware", error, res);
   }
 };
 
-export default protectRoute;
+export default authenticateToken;

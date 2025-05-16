@@ -11,7 +11,7 @@ import {
   getProfile,
   updateProfile,
 } from "../controllers/users.controller.js";
-import protectRoute from "../middleware/protectRoute.js";
+import authenticateToken from "../middleware/authenticateToken.js";
 import validateData from "../middleware/validateData.js";
 import {
   checkUsernameSchema,
@@ -25,15 +25,15 @@ const router = express.Router();
 
 router.get(
   "/check-username/:username",
-  protectRoute,
+  authenticateToken,
   validateData(checkUsernameSchema),
   checkUsername
 );
-router.get("/:id/followers", protectRoute, validateData(getFollowListSchema), getFollowList);
-router.get("/:id/following", protectRoute, validateData(getFollowListSchema), getFollowList);
-router.get("/:id", protectRoute, validateData(cuidParamsSchema), getProfile);
-router.patch("/:id", protectRoute, validateData(updateProfileSchema), updateProfile);
-router.delete("/:id", protectRoute, validateData(deleteAccountSchema), deleteAccount);
+router.get("/:id/followers", authenticateToken, validateData(getFollowListSchema), getFollowList);
+router.get("/:id/following", authenticateToken, validateData(getFollowListSchema), getFollowList);
+router.get("/:id", authenticateToken, validateData(cuidParamsSchema), getProfile);
+router.patch("/:id", authenticateToken, validateData(updateProfileSchema), updateProfile);
+router.delete("/:id", authenticateToken, validateData(deleteAccountSchema), deleteAccount);
 
 /**
  * features

@@ -1,10 +1,12 @@
 import { CookieOptions, Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import prisma from "../db/prisma.js";
-import generateToken from "../utils/generateToken.js";
+import generateToken, { REFRESH_COOKIE_NAME } from "../utils/generateToken.js";
 import internalServerError from "../utils/internalServerError.js";
 import sanitizeUser from "../utils/sanitizeUser.js";
 import { LoginBody, SignupBody } from "../schemas/auth.schemas.js";
+import { DecodedToken } from "../types/global.js";
 
 /**
  * method simply for testing backend connection
@@ -51,8 +53,9 @@ export const signup = async (req: Request<{}, {}, SignupBody>, res: Response): P
       },
     });
 
-    // generate jwt token
+    // after validating user, generate both access and refresh token
     generateToken(newUser.id, "access", res);
+    generateToken(newUser.id, "refresh", res);
 
     // return user with sanitized data as a json object with created status
     const filteredUser = sanitizeUser(newUser);
@@ -87,8 +90,9 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
       return;
     }
 
-    // after validating user, generate jwt token
+    // after validating user, generate both access and refresh token
     generateToken(user.id, "access", res);
+    generateToken(user.id, "refresh", res);
 
     // return user with sanitized data
     const filteredUser = sanitizeUser(user);
@@ -103,16 +107,15 @@ export const login = async (req: Request<{}, {}, LoginBody>, res: Response): Pro
  */
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    // set jwt cookie to be empty string with max age of 0
+    // clearing jwt cookie
     const options: CookieOptions = {
-      maxAge: 0,
       httpOnly: true,
       sameSite: "strict",
       secure: process.env.NODE_ENV !== "development",
     };
-    res.cookie("jwt", "", options);
+    res.clearCookie(REFRESH_COOKIE_NAME, options);
 
-    res.status(200).json({ message: "Logged out successfully" });
+    res.status(204).json({ message: "Logged out successfully" });
   } catch (error: unknown) {
     internalServerError("logout controller", error, res);
   }
@@ -136,5 +139,42 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ user: filteredUser });
   } catch (error: unknown) {
     internalServerError("getMe controller", error, res);
+  }
+};
+
+export const refreshToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = req.cookies[REFRESH_COOKIE_NAME];
+    if (!token) {
+      res.status(401).json({ message: "Unauthorized - No refresh token" });
+      return;
+    }
+
+    const secret = process.env.REFRESH_TOKEN_SECRET;
+    if (!secret) {
+      throw new Error("Missing JWT secret environment variable");
+    }
+
+    const decoded = jwt.verify(token, secret) as DecodedToken;
+    if (!decoded) {
+      res.status(401).json({ message: "Unauthorized - Invalid token" });
+      return;
+    }
+
+    // find user and select useful fields
+    const user = await prisma.user.findFirst({
+      where: { id: decoded.userId, isDeleted: false },
+    });
+
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    const accessToken = generateToken(decoded.userId, "access", res);
+
+    res.status(200).json({ accessToken });
+  } catch (error: unknown) {
+    internalServerError("refreshToken controller", error, res);
   }
 };
